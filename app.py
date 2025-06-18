@@ -1,37 +1,30 @@
-from flask import Flask, request, jsonify, abort
-import json
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)  # per evitare problemi CORS
 
-DATA_FILE = 'canti.json'
-USERNAME = 'admin'    # Username finto
-PASSWORD = 'password' # Password finta (per test locale)
+# Carica i canti da un file JSON o variabile
+canti_data = {
+    "domenica": "23 giugno 2025",
+    "canti": ["Canto 1", "Canto 2", "Canto 3"]
+}
 
-# Funzione per leggere i canti
-def read_canti():
-    with open(DATA_FILE, 'r') as f:
-        return json.load(f)
-
-# Funzione per scrivere i canti
-def write_canti(data):
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
-
-# Rotta pubblica: restituisce i canti
 @app.route('/api/canti', methods=['GET'])
 def get_canti():
-    return jsonify(read_canti())
+    return jsonify(canti_data)
 
-# Rotta privata: modifica i canti (richiede autenticazione base)
 @app.route('/api/canti', methods=['POST'])
 def update_canti():
+    global canti_data
+    # verifica autenticazione Basic (semplificata)
     auth = request.authorization
-    if not auth or auth.username != USERNAME or auth.password != PASSWORD:
-        abort(401)  # Unauthorized
+    if not auth or auth.username != 'admin' or auth.password != 'password':
+        return jsonify({"error": "Unauthorized"}), 401
 
-    new_canti = request.json
-    write_canti(new_canti)
-    return jsonify({"message": "Canti aggiornati con successo!"})
+    dati = request.json
+    canti_data = dati  # o valida i dati prima di salvare
+    return jsonify({"message": "Canti aggiornati"}), 200
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    app.run()
