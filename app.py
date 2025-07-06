@@ -1,107 +1,93 @@
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import os
-import logging
+import json
 from datetime import datetime
-
-app = Flask(__name__)
-CORS(app)  # Abilita CORS per tutte le rotte (limitare in produzione)
+import logging
 
 # Configurazione
-app.config.update({
-    'SONGS_DIR': os.path.join(os.path.dirname(__file__), 'canti'),
-    'DATA_FILE': os.path.join(os.path.dirname(__file__), 'data', 'canti.json')
-})
+app = Flask(__name__)
+CORS(app)
 
-# Crea le cartelle necessarie se non esistono
-os.makedirs(app.config['SONGS_DIR'], exist_ok=True)
-os.makedirs(os.path.dirname(app.config['DATA_FILE']), exist_ok=True)
+# Paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SONGS_DIR = os.path.join(BASE_DIR, 'canti')
+DATA_FILE = os.path.join(BASE_DIR, 'data', 'canti.json')
 
-# Setup logging
+# Crea cartelle se non esistono
+os.makedirs(SONGS_DIR, exist_ok=True)
+os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def load_canti_data():
-    """Carica i dati dei canti dal file JSON"""
+# Helper functions
+def load_songs_data():
     try:
-        if os.path.exists(app.config['DATA_FILE']):
-            with open(app.config['DATA_FILE'], 'r') as f:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, 'r') as f:
                 return json.load(f)
     except Exception as e:
-        logger.error(f"Error loading canti data: {str(e)}")
+        logger.error(f"Error loading songs data: {e}")
     
-    # Dati di default se il file non esiste
     return {
         "domenica": datetime.now().strftime("%d %B %Y"),
         "canti": []
     }
 
-def save_canti_data(data):
-    """Salva i dati dei canti nel file JSON"""
+def save_songs_data(data):
     try:
-        with open(app.config['DATA_FILE'], 'w') as f:
+        with open(DATA_FILE, 'w') as f:
             json.dump(data, f, indent=2)
         return True
     except Exception as e:
-        logger.error(f"Error saving canti data: {str(e)}")
+        logger.error(f"Error saving songs data: {e}")
         return False
 
+# Routes
 @app.route('/api/canti', methods=['GET'])
-def get_canti():
-    """Endpoint per ottenere i canti della domenica"""
-    return jsonify(load_canti_data())
+def get_current_songs():
+    return jsonify(load_songs_data())
 
 @app.route('/api/canti', methods=['POST'])
-def update_canti():
-    """
-    Endpoint per aggiornare i canti.
-    L'autenticazione è gestita lato client via Basic Auth in credentials.js
-    """
+def update_songs():
     data = request.get_json()
     
-    # Validazione minima
     if not data or 'domenica' not in data or 'canti' not in data:
-        return jsonify({"error": "Dati mancanti o non validi"}), 400
+        return jsonify({"error": "Dati mancanti"}), 400
     
-    # Filtra canti vuoti
-    valid_canti = [c for c in data['canti'] if isinstance(c, str) and c.strip()]
+    valid_songs = [s for s in data['canti'] if isinstance(s, str) and s.strip()]
     
-    new_data = {
+    if save_songs_data({
         "domenica": data['domenica'],
-        "canti": valid_canti
-    }
+        "canti": valid_songs
+    }):
+        return jsonify({"message": "Aggiornato con successo"})
     
-    if save_canti_data(new_data):
-        logger.info(f"Canti aggiornati per {new_data['domenica']}")
-        return jsonify({"message": "Canti aggiornati con successo"})
-    else:
-        return jsonify({"error": "Errore nel salvataggio"}), 500
+    return jsonify({"error": "Errore salvataggio"}), 500
 
 @app.route('/api/songs-list', methods=['GET'])
-def get_songs_list():
-    """Endpoint per ottenere la lista dei canti disponibili"""
+def list_available_songs():
     try:
-        songs = []
-        for f in os.listdir(app.config['SONGS_DIR']):
-            if f.endswith('.html'):
-                # Rimuovi estensione e sostituisci trattini con spazi
-                song_name = f[:-5].replace('-', ' ')
-                songs.append(song_name)
+        songs = [
+            f.replace('.html', '').replace('-', ' ')
+            for f in os.listdir(SONGS_DIR)
+            if f.endswith('.html')
+        ]
         return jsonify(sorted(songs))
     except Exception as e:
-        logger.error(f"Errore accesso cartella canti: {str(e)}")
-        return jsonify({"error": "Errore nel recupero della lista"}), 500
+        logger.error(f"Error listing songs: {e}")
+        return jsonify({"error": "Errore server"}), 500
 
-@app.route('/canti/<path:filename>')
+@app.route('/canti/<filename>')
 def serve_song(filename):
-    """Serve i file dei canti dalla cartella /canti"""
-    return send_from_directory(app.config['SONGS_DIR'], filename)
+    return send_from_directory(SONGS_DIR, filename)
 
 @app.route('/health')
 def health_check():
-    """Endpoint per health check"""
     return jsonify({
-        "status": "healthy",
+        "status": "ok",
         "service": "coro-backend",
         "timestamp": datetime.now().isoformat()
     })
