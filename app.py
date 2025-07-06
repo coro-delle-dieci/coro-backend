@@ -21,6 +21,15 @@ cors = CORS(app, resources={
     }
 })
 
+@app.route('/api/debug', methods=['GET'])
+def debug_info():
+    return jsonify({
+        "songs_dir_exists": os.path.exists(SONGS_DIR),
+        "songs_dir_contents": os.listdir(SONGS_DIR) if os.path.exists(SONGS_DIR) else [],
+        "current_working_dir": os.getcwd(),
+        "absolute_songs_path": os.path.abspath(SONGS_DIR)
+    })
+
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SONGS_DIR = os.path.join(BASE_DIR, 'canti')
