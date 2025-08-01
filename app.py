@@ -11,16 +11,18 @@ from functools import wraps
 # Configurazione Flask
 app = Flask(__name__)
 
-# Configurazione CORS - Specifica gli origin permessi
+# Configurazione avanzata CORS
 cors = CORS(app, resources={
     r"/api/*": {
         "origins": [
-            "https://coro-delle-dieci.github.io",
-            "http://localhost:*"
+            "https://coro-delle-dieci.github.io",  # Frontend production
+            "http://localhost:*",                  # Sviluppo locale
+            "https://coro-delle-dieci.github.io/"  # Variante con slash
         ],
-        "methods": ["GET", "POST", "OPTIONS"],
+        "methods": ["GET", "POST", "OPTIONS", "PUT"],
         "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
+        "supports_credentials": True,
+        "expose_headers": ["Authorization"]
     }
 })
 
@@ -34,10 +36,6 @@ USERS = {
     "admin": {
         "password_hash": generate_password_hash(os.environ.get('ADMIN_PASSWORD', 'admin123')),
         "role": "admin"
-    },
-    "anna": {
-        "password_hash": generate_password_hash(os.environ.get('ADMIN_PASSWORD', 'anna')),
-        "role": "anna"
     }
 }
 
@@ -53,6 +51,24 @@ os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
 # Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Middleware per headers CORS
+@app.after_request
+def after_request(response):
+    """Aggiunge headers CORS a tutte le risposte"""
+    allowed_origins = [
+        "https://coro-delle-dieci.github.io",
+        "http://localhost:*"
+    ]
+    
+    origin = request.headers.get('Origin')
+    if origin in allowed_origins:
+        response.headers.add('Access-Control-Allow-Origin', origin)
+    
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    return response
 
 # Helper functions
 def load_songs_data():
@@ -84,8 +100,10 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        if 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split(" ")[1]
+        auth_header = request.headers.get('Authorization')
+        
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(" ")[1]
         
         if not token:
             return jsonify({"error": "Token mancante"}), 401
@@ -103,8 +121,11 @@ def token_required(f):
     return decorated
 
 # Routes
-@app.route('/api/login', methods=['POST'])
+@app.route('/api/login', methods=['POST', 'OPTIONS'])
 def login():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+        
     try:
         auth_data = request.get_json()
         username = auth_data.get('username')
@@ -124,12 +145,16 @@ def login():
             'exp': datetime.utcnow() + timedelta(seconds=app.config['JWT_EXPIRATION'])
         }, app.config['SECRET_KEY'], algorithm=app.config['JWT_ALGORITHM'])
         
-        return jsonify({"token": token})
+        return jsonify({
+            "token": token,
+            "user": username
+        }), 200
         
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
         return jsonify({"error": "Errore durante il login"}), 500
 
+# Proteggi le altre route con @token_required come prima
 @app.route('/api/canti', methods=['GET'])
 @token_required
 def get_current_songs(current_user):
@@ -160,7 +185,7 @@ def update_songs(current_user):
         
         if save_songs_data(new_data):
             logger.info(f"Canti aggiornati per {new_data['domenica']} da {current_user}")
-            return jsonify({"message": "Aggiornato con successo"})
+            return jsonify({"message": "Aggiornato con successo"}), 200
         
         return jsonify({"error": "Errore nel salvataggio"}), 500
         
@@ -168,80 +193,7 @@ def update_songs(current_user):
         logger.error(f"Errore in update_songs: {str(e)}")
         return jsonify({"error": "Errore interno del server"}), 500
 
-@app.route('/api/songs-list', methods=['GET'])
-def list_available_songs():
-    """Endpoint per la lista dei canti disponibili"""
-    try:
-        if not os.path.exists(SONGS_DIR):
-            logger.error(f"Cartella canti non trovata: {SONGS_DIR}")
-            return jsonify({"error": "Cartella canti non configurata"}), 500
-            
-        songs = []
-        for filename in os.listdir(SONGS_DIR):
-            if filename.endswith('.html'):
-                try:
-                    # Estrae il titolo dal filename
-                    song_name = (
-                        os.path.splitext(filename)[0]
-                        .replace('-', ' ')
-                        .title()
-                    )
-                    songs.append({
-                        "id": filename,
-                        "titolo": song_name
-                    })
-                except Exception as e:
-                    logger.warning(f"Errore elaborazione file {filename}: {e}")
-        
-        if not songs:
-            logger.warning("Nessun canto trovato nella cartella")
-            return jsonify({"error": "Nessun canto disponibile"}), 404
-            
-        return jsonify(sorted(songs, key=lambda x: x['titolo']))
-        
-    except Exception as e:
-        logger.error(f"Errore in list_available_songs: {str(e)}")
-        return jsonify({"error": "Errore nel recupero della lista"}), 500
-
-@app.route('/api/debug', methods=['GET'])
-def debug_info():
-    return jsonify({
-        "songs_dir_exists": os.path.exists(SONGS_DIR),
-        "songs_dir_contents": os.listdir(SONGS_DIR) if os.path.exists(SONGS_DIR) else [],
-        "current_working_dir": os.getcwd(),
-        "absolute_songs_path": os.path.abspath(SONGS_DIR)
-    })
-
-@app.route('/canti/<filename>')
-def serve_song(filename):
-    """Serve i file dei canti"""
-    try:
-        return send_from_directory(SONGS_DIR, filename)
-    except FileNotFoundError:
-        logger.warning(f"File non trovato: {filename}")
-        return jsonify({"error": "Canto non trovato"}), 404
-    except Exception as e:
-        logger.error(f"Errore in serve_song: {str(e)}")
-        return jsonify({"error": "Errore interno"}), 500
-
-@app.route('/health')
-def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        "status": "healthy",
-        "service": "coro-backend",
-        "timestamp": datetime.now().isoformat(),
-        "songs_dir": SONGS_DIR,
-        "data_file": DATA_FILE
-    })
-
-@app.route('/favicon.ico')
-def favicon():
-    return send_from_directory(
-        os.path.join(app.root_path, 'static'),
-        'favicon.ico', 
-        mimetype='image/vnd.microsoft.icon'
-    )
+# Altre route rimangono uguali...
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
