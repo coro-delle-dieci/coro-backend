@@ -1,9 +1,10 @@
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins="https://coro-delle-dieci.github.io", supports_credentials=True)
+
 
 @app.route('/crea-canto', methods=['POST'])
 def crea_canto():
