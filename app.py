@@ -3,7 +3,7 @@ from flask_cors import CORS
 import os
 
 app = Flask(__name__)
-CORS(app)  # serve per evitare errori CORS in locale
+CORS(app)
 
 @app.route('/crea-canto', methods=['POST'])
 def crea_canto():
@@ -12,9 +12,6 @@ def crea_canto():
     youtube = request.form.get('youtubeLink')
     minicorale = request.form.get('minicoraleNumber')
     assemblea = request.form.get('assembleaNumber')
-
-    if not title or not lyrics:
-        return jsonify({'error': 'Titolo e testo obbligatori'}), 400
 
     if not os.path.exists("canti"):
         os.makedirs("canti")
@@ -29,7 +26,4 @@ def crea_canto():
         if assemblea:
             f.write(f"\nNumero Assemblea: {assemblea}")
 
-    return jsonify({'message': 'Canto salvato!'})
-
-if __name__ == '__main__':
-    app.run(debug=True)
+    return jsonify({'message': 'Canto creato con successo!'})
