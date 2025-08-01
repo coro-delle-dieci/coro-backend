@@ -8,6 +8,38 @@ import logging
 # Configurazione Flask
 app = Flask(__name__)
 
+
+@app.route('/crea-canto', methods=['POST'])
+def crea_canto():
+    title = request.form.get('title')
+    lyrics = request.form.get('lyrics')
+    youtube = request.form.get('youtubeLink')
+    mini = request.form.get('minicoraleNumber')
+    assemblea = request.form.get('assembleaNumber')
+    
+    # Salva i dati (puoi anche salvarli su file o in un database)
+    if not os.path.exists("canti"):
+        os.makedirs("canti")
+
+    filename = f"canti/{title.replace(' ', '_')}.txt"
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(f"Titolo: {title}\n\nTesto:\n{lyrics}\n")
+        if youtube:
+            f.write(f"\nYouTube: {youtube}")
+        if mini:
+            f.write(f"\nNumero Minicorale: {mini}")
+        if assemblea:
+            f.write(f"\nNumero Assemblea: {assemblea}")
+    
+    return jsonify({'message': 'Canto creato con successo!'})
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+
 # Configurazione CORS
 CORS(app)
 
