@@ -34,6 +34,10 @@ USERS = {
     "admin": {
         "password_hash": generate_password_hash(os.environ.get('ADMIN_PASSWORD', 'admin123')),
         "role": "admin"
+    },
+    "anna": {
+        "password_hash": generate_password_hash(os.environ.get('ADMIN_PASSWORD', 'anna')),
+        "role": "anna"
     }
 }
 
